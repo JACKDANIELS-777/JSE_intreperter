@@ -1,0 +1,498 @@
+//var fso = new ActiveXObject("Scripting.FileSystemObject");
+//var filePath = "C:\\Users\\elrai\\OneDrive\\Desktop\\jscript\\classes.jse";  // External file path
+//var file = fso.OpenTextFile(filePath, 1);  // Open the file for reading
+//var scriptContent = file.ReadAll();  // Read the script content
+//file.Close();  // Close the file
+
+// Dynamically evaluate and run the script
+//eval(scriptContent);
+
+try {
+    run_file = WScript.Arguments(0);
+} catch (e) {
+    WScript.Echo("Need a file to run");
+    WScript.Quit();
+}
+
+//WScript.Echo(run_file);
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+
+try {
+    var file = fso.OpenTextFile(run_file, 1); // 1 = ForReading
+} catch (e) {
+    WScript.Echo("Invalid file or destination");
+    WScript.Quit();
+}
+
+code = "";
+while (!file.AtEndOfStream) {
+    var line = file.ReadLine(); // Read the next line
+    code += line;
+}
+
+tokens = [];
+env = {};
+// WScript.Echo(code);
+t = lexer(code, tokens);
+
+parser(t, env);
+file.Close();
+
+function lexer(string, tokens) {
+    var i = 0;
+    tok = "";
+    bracket_num = 0;
+
+    while (i < string.length) {
+        c = string.charAt(i);
+        if (c == ";" && bracket_num == 0) {
+            tokens.push(tok);
+            //print(tok)
+            tok = "";
+            i += 1;
+            continue;
+        }
+
+        if (c == "{" && bracket_num == 0) {
+            bracket_num += 1;
+            i += 1;
+            continue;
+        }
+
+        if (c == "}" && bracket_num == 1) {
+            tokens.push(tok);
+            tok = "";
+            i += 1;
+            bracket_num = 0;
+            continue;
+        }
+
+        if (c == "{" && bracket_num > 0) {
+            bracket_num += 1;
+        }
+        if (c == "}" && bracket_num > 1) {
+            bracket_num -= 1;
+        }
+
+        if (c == "_" && tok == "\\" && bracket_num == 0) {
+            tokens.push(" ");
+            i += 1;
+            tok = "";
+            continue;
+        }
+
+        if (c == " " && tok == "") {
+            i += 1;
+            continue;
+        }
+
+        tok += c;
+        i += 1; // Move to the next character
+    }
+    return tokens;
+}
+
+var builtins = {
+    "Writter": {
+        "write": function(file, path) {
+            // Write logic goes here
+            console.log("Writing file: ${file} to path: ${path}");
+        }
+    }
+};
+function parser(tokens, env) {
+    out_env = new Object();
+    var i = 0;
+    var builtins = {
+    "Reader": {"read": function(){}},
+    "Writer": {
+        "write": function(pathVar, fileVar,mode) {
+         
+        try {
+            var fso = new ActiveXObject("Scripting.FileSystemObject");
+            var fileObj = fso.OpenTextFile(pathVar, mode, true); // Open for writing
+
+            // Write the content (file is the value of env["file"])
+            toks=[]
+            parser(lexer(fileVar,toks),env)
+            fileObj.WriteLine(env);  // Write the value of 'file' to the path
+
+            fileObj.Close();  // Close the file
+            WScript.Echo("File written successfully at " + pathVar);
+        } catch (e) {
+            WScript.Echo("Error: Unable to write to file: " + e.message);
+        }
+    }
+    }
+};
+    while (i < tokens.length) {
+        //func a params statement
+
+        if(tokens[i]=="list"){
+           env[tokens[i+1]]= tokens[i+2].toString().split(",")
+           i+=3
+           continue
+        }
+        
+        if(tokens[i]=="Object"){
+         
+         if(tokens[i+1]=="Writer"){
+             if(tokens[i+2]=="write"){
+             builtins[tokens[i+1]][tokens[i+2]](tokens[i+3], tokens[i+4],2);
+             
+             i+=5
+             continue
+        }
+        else if(tokens[i+2]=="append"){
+              //                    we change this to avoid erros  only change the 8 for append mode
+              builtins[tokens[i+1]]["write"](tokens[i+3], tokens[i+4],8);
+              i+=5
+              continue
+        }
+        }
+        
+        
+        }
+        if (tokens[i] == "func") { 
+         
+         env[tokens[i+1]] = tokens[i+2]
+         env["state"+tokens[i+1]] = tokens[i+3]
+      
+
+                 //WScript.Echo(env[tokens[i+1]]+"vars");
+         i+=4;
+         continue;
+        }
+        if(tokens[i] == "call"){
+        _env={}
+        //WScript.Echo(env[tokens[i+1]]+"parameters");
+        arr = env[tokens[i+1]].toString()
+        arr= arr.split(",")
+        params = tokens[i+2].toString();
+        params = params.split(",")
+        for(j=0;j<params.length;j++){
+        if(params[j] in env){
+           _env[arr[j]]= env[params[j]]
+
+        }
+        else{_env[arr[j]]= params[j];}
+        //WScript.Echo(arr[j]+"ok")
+        }
+        toks=[]
+        
+         //WScript.Echo(env["state"+ tokens[i+1]])
+        parser(lexer(env["state"+ tokens[i+1]],toks),_env)
+        i+=3;
+        continue;
+
+        }
+
+
+        if (tokens[i] == "if") {
+            for_num = 0;
+            elseif_list = [];
+            if_str = tokens[i + 1];
+            if_op = tokens[i + 2];
+            if_str_2 = tokens[i + 3];
+            if_statement = tokens[i + 4];
+            else_str = "";
+
+            for (j = i + 5; j < tokens.length; j++) {
+                if (tokens[j] == "else_if") {
+                    elseif_list.push(tokens[j + 1]);
+                    elseif_list.push(tokens[j + 2]);
+                    elseif_list.push(tokens[j + 3]);
+                    elseif_list.push(tokens[j + 4]);
+                    j += 4;
+                    continue;
+                }
+
+                if (tokens[j] == "else") {
+                    else_str = tokens[j + 1];
+                    j += 1;
+                    continue;
+                }
+
+                else if (tokens[j] == "end_if") {
+                    break;
+                }
+            }
+
+            //WScript.Echo(elseif_list);
+            done_num = 1;
+
+            if (if_str in env || if_str_2 in env) {
+                if (if_str in env && if_str_2 in env) {
+                    WScript.Echo(7777)
+                    try{
+                    
+                    Result = eval(env[if_str] + if_op + env[if_str_2]);
+                    }
+                    catch(e){
+                    //WScript.Echo("\""+env[if_str].toString()+ "\"" + if_op + if_str_2.toString())
+                    Result = eval("\""+env[if_str]+ "\"" + if_op + "\""+env[if_str_2]+"\"")
+                    
+
+                    }
+                    if (Result) {
+                        done_num = 0;
+                        toks = [];
+                        _env = new Object();
+                        parser(lexer(if_statement, toks), env);
+
+                    }
+                }//end of both
+
+                else if (if_str in env) {
+                    //WScript.Echo(env[if_str] + if_op + if_str_2)
+                    try{
+                    Result = eval(env[if_str] + if_op + if_str_2);
+                    }
+                    catch(e){
+                    WScript.Echo("\""+env[if_str].toString()+ "\"" + if_op + if_str_2.toString())
+                    Result = eval("\""+env[if_str]+ "\"" + if_op + if_str_2);
+                    }
+                    if (Result) {
+                        done_num = 0;
+                        toks = [];
+                        _env = new Object();
+                        parser(lexer(if_statement, toks), env);
+ 
+                    }
+                }//end of sirts
+                else if (if_str_2 in env){
+                    try{
+                    Result = eval(if_str + if_op + env[if_str_2]);
+                    }
+                    catch(e){
+                    //WScript.Echo("\""+env[if_str].toString()+ "\"" + if_op + if_str_2.toString())
+                    //if the top one fails means that one is a string so we add "" around it so that its "hey"==7 hey being in the variable var;a;hey;
+                    Result = eval(if_str.toString() + if_op + "\""+env[if_str_2.toString()]+ "\"")
+                    
+
+                    }
+                    
+                    if (Result) {
+                        done_num = 0;
+                        toks = [];
+                        _env = new Object();
+                        parser(lexer(if_statement, toks), env);
+                        
+                    }
+                }//end of second
+            }//end of ||
+
+            else if (done_num != 0) {
+                //WScript.Echo(777)
+                Result = eval(if_str + if_op + if_str_2);
+                if (Result) {
+                    done_num = 0;
+                    toks = [];
+                    _env = new Object();
+                    parser(lexer(if_statement, toks), env);
+                }
+            }
+
+            if (done_num != 0) {
+                for (j = 0; j < elseif_list.length; j += 4) {
+                    if (elseif_list[j] in env || elseif_list[j + 2] in env) {
+                        if (elseif_list[j] in env && elseif_list[j + 2] in env) {
+                            try{
+                             Result = eval(env[elseif_list[j]] + elseif_list[j + 1] + env[elseif_list[j + 2]]);
+                               }
+                            catch(e){
+                           //WScript.Echo("\""+env[if_str].toString()+ "\"" + if_op + if_str_2.toString())
+                           Result = eval("\""+env[elseif_list[j]]+"\"" + elseif_list[j + 1] + "\""+ env[elseif_list[j + 2]]+"\"");
+                    }
+                            
+                            if (Result) {
+                                done_num = 0;
+                                toks = [];
+                                _env = new Object();
+                                parser(lexer(elseif_list[j + 3], toks), env);
+                                break;
+                            }
+                        }
+
+                        else if (elseif_list[j] in env) {
+                            try{
+                            Result = eval(env[elseif_list[j]] + elseif_list[j + 1] + elseif_list[j + 2]);
+                            }catch(e){
+                               Result = eval("\""+env[elseif_list[j]]+"\"" + elseif_list[j + 1] + elseif_list[j + 2]);
+                            }
+                            if (Result) {
+                                done_num = 0;
+                                toks = [];
+                                _env = new Object();
+                                parser(lexer(elseif_list[j + 3], toks), env);
+                                break;
+                            }
+                        }
+                        else if (elseif_list[j + 2] in env) {
+                            try{
+                            Result = eval(elseif_list[j] + elseif_list[j + 1] + env[elseif_list[j + 2]]);
+                            }catch(e){
+                            Result = eval(elseif_list[j] + elseif_list[j + 1] + "\""+env[elseif_list[j + 2]]+"\"");
+                            }
+                            if (Result) {
+                                done_num = 0;
+                                toks = [];
+                                _env = new Object();
+                                parser(lexer(elseif_list[j + 3], toks), env);
+                                break;
+                            }
+                        }
+                    }
+                    else {
+                        Result = eval(elseif_list[j] + elseif_list[j + 1] + elseif_list[j + 2]);
+                        if (Result) {
+                            done_num = 0;
+                            toks = [];
+                            _env = new Object();
+                            parser(lexer(elseif_list[j + 3], toks), env);
+                            break;
+                        }
+                    }
+                }
+            }
+             //else
+            if (done_num != 0) {
+                toks = [];
+                done_num=0
+                //WScript.Echo(else_str+" else")
+                parser(lexer(else_str, toks), env);
+            }
+
+            i += 5 + elseif_list.length;
+            if (else_str != "") { i += 2; }
+            continue;
+        }
+        
+        if (tokens[i] == "input") {
+           WScript.Echo(tokens[i+2])
+            if (tokens[i + 1] == "eval") {
+                env[tokens[i + 2]] = eval(WScript.StdIn.ReadLine());
+                i += 3;
+            } else {
+                env[tokens[i + 1]] = WScript.StdIn.ReadLine();
+                i += 3;
+            }
+            
+            continue;
+        }
+        if (tokens[i] == "var" && tokens[i+1]=="eval"){ 
+            
+            env[tokens[i + 2]] = runWithEnv(tokens[i + 3],env);
+            i += 4;
+            continue;
+        }
+        if (tokens[i] == "var") {
+            
+            env[tokens[i + 1]] = tokens[i + 2];
+            
+            i += 3;
+            continue;
+        }
+        
+
+        
+        if (tokens[i] == "print") {
+            args = [];
+            for (j = i + 1; j < tokens.length; j++) {
+                if (tokens[j] == "end_print") {
+                    break;
+                } else {
+                    if (tokens[j] in env) {
+                        args.push(env[tokens[j]]);
+                    } else {
+                        args.push(tokens[j]);
+                    }
+                }
+            }
+            for (j = 0; j < args.length; j++) {
+                if (args[j] == "eval") { 
+                    
+                    WScript.Echo(runWithEnv(args[j + 1], env));
+                    j += 1;
+                } else {
+             
+                    WScript.Echo(args[j]);
+                }
+            }
+
+            i += 1 + args.length;
+            continue;
+        }
+
+        if (tokens[i] == "put") {
+            args = [];
+            for (j = i + 1; j < tokens.length; j++) {
+                if (tokens[j] == "end_put") {
+                    break;
+                } else {
+                    if (tokens[j] in env) {
+                        //WScript.Echo(tokens[j]);
+                        args.push(env[tokens[j]]);
+                    } else {
+                        args.push(tokens[j]);
+                    }
+                }
+            }
+            str = "";
+            for (j = 0; j < args.length; j++) {
+                if (args[j] == "eval") {
+                    str += runWithEnv(args[j + 1], env);
+                    j += 1;
+                } else {
+                    str += args[j];
+                }
+            }
+            //WScript.Echo(str);
+            i += 1 + args.length;
+            args = [];
+            continue;
+        }
+
+        i += 1;
+    }
+}
+
+function runWithEnv(code, env) {
+    var context = "";  // Will hold the environment code
+
+    // Inject each variable from the env into the context (making them available to eval)
+    for (var key in env) {
+        //WScript.Echo(key+"9");
+        if (env.hasOwnProperty(key)) {
+            //.substring(1,key.length-1)
+            context += "var " + key + " = " + env[key] + ";\n";
+        }
+    }
+    
+    var evalCode = context + code;
+    //WScript.Echo(evalCode)
+    try{
+    return eval(evalCode);
+    }catch(e){}
+}
+
+
+
+function RUN(string){
+    toks=[]
+    _env={}
+   	
+   tt=lexer(string,toks)
+   parser(tt,_env)
+   
+    
+
+}
+
+
+function print(str){
+WScript.Echo(str)
+
+
+
+}

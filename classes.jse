@@ -1,0 +1,234 @@
+// Lexer function to tokenize the input
+function lexer(input, tokens) {
+    var i = 0;
+    var tok = "";
+    var bracket_num = 0;
+    while (i < input.length) {
+        var c = input.charAt(i);
+
+        if (c === ";" && bracket_num === 0) {
+            tokens.push(tok);
+            tok = "";
+            i++;
+            continue;
+        }
+
+        if (c === "{" && bracket_num === 0) {
+            bracket_num += 1;
+            i++;
+            continue;
+        }
+
+        if (c === "}" && bracket_num === 1) {
+            tokens.push(tok);
+            tok = "";
+            i++;
+            bracket_num = 0;
+            continue;
+        }
+
+        if (c === "{" && bracket_num > 0) {
+            bracket_num += 1;
+        }
+        if (c === "}" && bracket_num > 1) {
+            bracket_num -= 1;
+        }
+
+        if (c === " " && tok === "") {
+            i++;
+            continue;
+        }
+
+        tok += c;
+        i++;
+    }
+    return tokens;
+}
+
+// Parser function to handle the tokenized input
+function parser(tokens, env) {
+    var i = 0;
+    while (i < tokens.length) {
+        // Handle variable declarations
+        if (tokens[i] === "var") {
+            env[tokens[i + 1]] = tokens[i + 2];
+            i += 3;
+            continue;
+        }
+
+        // Handle function definitions
+        if (tokens[i] === "func") {
+            var funcName = tokens[i + 1];
+            var params = tokens[i + 2].split(",");
+            var funcBody = tokens[i + 3];
+            env[funcName] = { params: params, body: funcBody };
+            i += 4;
+            continue;
+        }
+
+        // Handle function calls
+        if (tokens[i] === "call") {
+            var funcName = tokens[i + 1];
+            var params = tokens[i + 2].split(",");
+            var func = env[funcName];
+            var localEnv = Object.create(env); // Create a new environment for function execution
+
+            // Bind the parameters to the function arguments
+            for (var j = 0; j < func.params.length; j++) {
+                localEnv[func.params[j]] = params[j];
+            }
+
+            // Execute function body within the new local environment
+            var result = runWithEnv(func.body, localEnv);
+            env[funcName] = result;  // Store the result in the global environment (or return)
+            i += 3;
+            continue;
+        }
+
+        // Handle class definitions (Basic Example)
+        if (tokens[i] === "class") {
+            var className = tokens[i + 1];
+            var classBody = tokens[i + 2];
+            env[className] = { body: classBody };
+            i += 3;
+            continue;
+        }
+
+        // Handle object instantiation (Fixing the issue with instance assignment)
+        if (tokens[i] === "new") {
+            var className = tokens[i + 1];
+            var instanceName = tokens[i + 2];
+
+            // Create a new object for the instance
+            var instance = new Object();
+            
+            // Assign class name and body properties to the instance
+            instance.className = className;  // Change 'class' to 'className'
+            instance.body = env[className].body;
+            
+            // Store the instance in the environment
+            env[instanceName] = instance;
+
+            i += 3;
+            continue;
+        }
+
+        // Handle array definitions and manipulation (new functionality)
+        if (tokens[i] === "array") {
+            var arrayName = tokens[i + 1];
+            var elements = tokens[i + 2].split(",");
+            env[arrayName] = elements;
+            i += 3;
+            continue;
+        }
+
+        // Handle array methods (push, pop, etc.)
+        if (tokens[i] === "array_method") {
+            var arrayName = tokens[i + 1];
+            var method = tokens[i + 2];
+            var value = tokens[i + 3];
+            if (method === "push") {
+                env[arrayName].push(value);
+            } else if (method === "pop") {
+                env[arrayName].pop();
+            }
+            i += 4;
+            continue;
+        }
+
+        // Handle conditionals (if statements)
+        if (tokens[i] === "if") {
+            var condition = tokens[i + 1];
+            var thenBlock = tokens[i + 2];
+
+            if (eval(condition)) {
+                runWithEnv(thenBlock, env);
+            }
+            i += 3;
+            continue;
+        }
+
+        // Handle print statement
+        if (tokens[i] === "print") {
+            var output = "";
+            for (var j = i + 1; j < tokens.length; j++) {
+                if (tokens[j] === "end_print") {
+                    break;
+                } else {
+                    if (tokens[j] in env) {
+                        output += env[tokens[j]];
+                    } else {
+                        output += tokens[j];
+                    }
+                }
+            }
+            WScript.Echo(output);
+            i += 1 + output.split(",").length;
+            continue;
+        }
+
+        i++; // Increment to avoid infinite loop
+    }
+}
+
+// Helper function to execute code within an environment
+function runWithEnv(code, env) {
+    var context = "";  // Will hold the environment code
+
+    // Inject each variable from the env into the context (making them available to eval)
+    for (var key in env) {
+        if (env.hasOwnProperty(key)) {
+            // Adjust handling of variables: strings, numbers, and arrays
+            if (typeof env[key] === "string") {
+                context += "var " + key + " = '" + env[key] + "';\n";
+            } else if (typeof env[key] === "number") {
+                context += "var " + key + " = " + env[key] + ";\n";
+            } else if (Array.isArray(env[key])) {
+                context += "var " + key + " = [" + env[key].join(",") + "];\n";
+            } else {
+                context += "var " + key + " = " + env[key] + ";\n";
+            }
+        }
+    }
+
+    // Evaluate the code in the context of the environment variables
+    var evalCode = context + code;
+    try {
+        return eval(evalCode);  // Execute the code within the context
+    } catch (e) {
+        WScript.Echo("Error: " + e.message);
+        return undefined;
+    }
+}
+
+// Example run function to execute code as a whole
+function run(code) {
+    var tokens = [];
+    var env = {};
+    lexer(code, tokens);
+    parser(tokens, env);
+}
+
+// Lexer test code (customizable)
+var code = "var x = 10;\n" +
+           "func; greet(name) { \n" +
+           "    print('Hello ' + name);\n" +
+           "};\n" +
+           "call;greet('World');\n" +
+           "class Person {\n" +
+           "    var name = 'John';\n" +
+           "    func sayHello() {\n" +
+           "        print('Hello, ' + this.name);\n" +
+           "    }\n" +
+           "}\n" +
+           "new Person p;\n" +
+           "call p.sayHello();\n" +
+           "array nums = [1, 2, 3];\n" +
+           "array_method nums push 4;\n" +
+           "print(nums);\n" +
+           "if (x > 5) {\n" +
+           "    print('x is greater than 5');\n" +
+           "}\n" +
+           "end_print";
+WScript.Echo(code)
+run(code);
